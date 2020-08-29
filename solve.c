@@ -32,7 +32,7 @@ fd[1] write
 #include <stdlib.h>
 #include <sys/select.h>
 
-#define SLAVES_COUNT 5
+#define SLAVES_COUNT 1
 #define ERROR_CODE 1
 #define READ 0
 #define WRITE 1
@@ -40,6 +40,17 @@ fd[1] write
 #define SLAVE_MASTER 1
 
 static int initSlaves(int pipes[SLAVES_COUNT][2][2]);
+
+/*
+        send parsed data
+    --- R--------------W
+MASTER                   SLAVE
+   |    W--------------R
+   |      send file path
+   | 
+   |      semaforo R/W
+    ---  SHR_MEM BUFFER  --- VISTA
+*/
 
 int main(int argc, char const *argv[]) {
 
@@ -70,28 +81,32 @@ int main(int argc, char const *argv[]) {
 
     fd_set readfds, writefds, exceptfds;
 
-    while (fileCount > 0) {
+    // while (fileCount > 0) {
 
         //clear the slave-master read set
         FD_ZERO(&readfds);
 
         int maxfd = -1;  //max fd for select call
 
-        //add slaves fds to read set
+        //add slaves fds to read and write set 
         for (size_t i = 0; i < SLAVES_COUNT; i++) {
-            int currentfd = pipes[i][SLAVE_MASTER][READ];
+            int slaveMasterR = pipes[i][SLAVE_MASTER][READ], masterSlaveW = pipes[i][MASTER_SLAVE][WRITE];
 
             //add to set
-            FD_SET(currentfd, &readfds);
+            FD_SET(slaveMasterR, &readfds);
+            FD_SET(masterSlaveW, &writefds);
 
             //update if necessary maxfd
-            if (currentfd > maxfd) {
-                maxfd = currentfd;
+            if (slaveMasterR > maxfd) {
+                maxfd = slaveMasterR;
+            }
+            if (masterSlaveW > maxfd) {
+                maxfd = masterSlaveW;
             }
         }
 
         //wait until slave can process another file
-        int activity = select(maxfd + 1, &readfds, NULL, NULL, NULL);
+        int activity = select(maxfd + 1, &readfds, &writefds, NULL, NULL);
 
         //check select error
         if (activity < 0) {
@@ -99,17 +114,17 @@ int main(int argc, char const *argv[]) {
             exit(ERROR_CODE);
         }
 
-        //if slave is available and there are still files to process, send new file
+        //check which fd is available
         for (size_t i = 0; i < SLAVES_COUNT; i++) {
-            int currentfd = pipes[i][SLAVE_MASTER][READ];
+            int slaveMasterR = pipes[i][SLAVE_MASTER][READ], masterSlaveW = pipes[i][MASTER_SLAVE][WRITE];
 
             //check if fd is 
-            if(FD_ISSET(currentfd, &readfds)){
+            if(FD_ISSET(slaveMasterR, &readfds)){
                 
             }
             
         }
-    }
+    // }
 
     return 0;
 }
@@ -135,7 +150,7 @@ static int initSlaves(int pipes[SLAVES_COUNT][2][2]) {
         //create slave
         if ((pid = fork()) == 0) {
             //close uncorresponding pipes
-            for (size_t j = 0; j < i; i++) {
+            for (size_t j = 0; j < i - 1; i++) {
                 close(pipes[j][MASTER_SLAVE][READ]);  //CHEKEAR ERRROR DE CLOSE
                 close(pipes[j][MASTER_SLAVE][WRITE]);
                 close(pipes[j][SLAVE_MASTER][READ]);
