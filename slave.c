@@ -13,15 +13,43 @@ comandos como grep, sed, awk, etc.
 ".*SATISFIABLE"
 */
 
+#include <string.h>
+#include <stdio.h>
+#include <unistd.h>
+
 #define ERROR_CODE 1
+#define MAX_TASKS_LENGTH 2000
+
+static void processTask(char * task);
 
 int main(int argc, char const *argv[]){
 
-    char fileName[PIPE_BUF] = {0};
+    // Disable buffering on stdout
+    if(setvbuf(stdout, NULL, _IONBF, 0)){
+    //check error
+    }
+
+    for (size_t i = 1; i < argc; i++)
+    {
+        processTask((char*)argv[i]);
+    }
     
-    while(read(fd,fileName,PIPE_BUF-1)>=0){
-        proceasr
+    char tasks[MAX_TASKS_LENGTH]={0};
+ 
+    while(read(STDIN_FILENO,tasks,MAX_TASKS_LENGTH)>0){
+        processTask(tasks);
     }
 
     return 0;
+}
+
+static void processTask(char * tasks) {
+
+    char *task = strtok(tasks, "\t");
+    fprintf(stderr,"processing task %s \n", task);
+
+    // Walk through other task outputs
+    while (task != NULL) {
+        task = strtok(NULL, tasks);
+    }
 }
