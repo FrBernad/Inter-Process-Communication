@@ -18,7 +18,7 @@ comandos como grep, sed, awk, etc.
 #include <unistd.h>
 
 #define ERROR_CODE 1
-#define MAX_TASKS_LENGTH 2000
+#define MAX_TASKS_LENGTH 4096-1
 
 static void processTask(char * task);
 
@@ -28,28 +28,27 @@ int main(int argc, char const *argv[]){
     if(setvbuf(stdout, NULL, _IONBF, 0)){
     //check error
     }
-
-    for (size_t i = 1; i < argc; i++)
+    for (size_t i = 0; i < argc; i++)
     {
         processTask((char*)argv[i]);
     }
     
-    char tasks[MAX_TASKS_LENGTH]={0};
- 
-    while(read(STDIN_FILENO,tasks,MAX_TASKS_LENGTH)>0){
-        processTask(tasks);
+    char task[MAX_TASKS_LENGTH]={0};
+    ssize_t count;
+
+    while((count=read(STDIN_FILENO,task,MAX_TASKS_LENGTH))!=0){
+        if(count==-1){
+            //handle error
+        }
+        task[count]=0;
+        processTask(task);
     }
 
     return 0;
 }
 
-static void processTask(char * tasks) {
+static void processTask(char * task) {
 
-    char *task = strtok(tasks, "\t");
     fprintf(stderr,"processing task %s \n", task);
-
-    // Walk through other task outputs
-    while (task != NULL) {
-        task = strtok(NULL, tasks);
-    }
+    printf("%s\t", task);
 }
