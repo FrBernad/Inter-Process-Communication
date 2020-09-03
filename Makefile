@@ -1,5 +1,5 @@
 CC= gcc
-GCCFLAGS= -std=c99 -Wall -pedantic -g
+GCCFLAGS= -std=c99 -Wall -pedantic -g 
 
 SOURCES= $(wildcard *.c)
 BINS=$(SOURCES:.c=.out)
