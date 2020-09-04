@@ -1,6 +1,6 @@
 CC= gcc
-GCCFLAGS= -std=c99 -Wall -pedantic -g -fsanitize=address
-GCCLIBS= -lrt
+GCCFLAGS= -std=c99 -Wall -pedantic -g -fsanitize=address 
+GCCLIBS= -lrt -pthread
 
 SOURCES= $(wildcard *.c)
 BINS=$(SOURCES:.c=.out)

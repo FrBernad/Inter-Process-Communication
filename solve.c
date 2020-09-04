@@ -33,21 +33,22 @@ fd[1] write
 
 // #FIXME fijarse cuando poner < o == -1
 
-#define _XOPEN_SOURCE 500 //for ftruncate
+#define _XOPEN_SOURCE 500  //for ftruncate
 
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>  //PIPE_BUF NO APARECE :C
+#include <semaphore.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/select.h>
+#include <sys/shm.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <sys/shm.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
 
 #define SLAVES_COUNT 5
 #define READ 0
@@ -55,14 +56,16 @@ fd[1] write
 #define MAX_OUTPUT_LENGTH 4096
 #define MIN_INIT_TASKS 2
 #define SLAVE_FILENAME "slave"
+#define SHR_MEM_NAME "/shm_buffer"
+#define SEM_NAME "/shr_sem"
+
 #define ERROR_MANAGER(ERROR_STRING)                                                            \
     do {                                                                                       \
-        fprintf(stderr, "Error in %s, line %d : %s", ERROR_STRING, __LINE__, strerror(errno)); \
+        fprintf(stderr, "Error in %s, line %d : %s\n", ERROR_STRING, __LINE__, strerror(errno)); \
         exit(EXIT_FAILURE);                                                                    \
     } while (0)
-#define SHR_MEM_NAME "/shm-buffer"
 
-    typedef struct {
+typedef struct {
     pid_t pid;
     int inputFD;
     int outputFD;
@@ -72,9 +75,10 @@ fd[1] write
 static void initSlaves(t_slave slaves[SLAVES_COUNT], char *tasks[], size_t *pendingTasks, size_t *taskIndex, size_t *workingSlaves);
 static void assignTask(t_slave *slave, char const *tasks[], size_t *pendingTasks, size_t *taskIndex);
 static void terminateSlaves(t_slave *slaves, size_t workingSlaves);
-static void initShm(char ** shmBase, int * shmFD);
-static void terminateShm(char * shmBase, int shmFD);
-
+static void initShm(char **shmBase, int *shmFD, size_t size);
+static void terminateShm(char *shmBase, int shmFD, size_t size);
+static void sendTaskInfo(char *tasksOutput, size_t recievedTasks, sem_t *sem, size_t *shmIndex, char *shmBase);
+static void terminateSem(sem_t *sem);
 
 /*
         send parsed data
@@ -93,12 +97,22 @@ int main(int argc, char const *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    char * shmBase;
-    int shmFD;
-    
-    initShm(&shmBase,&shmFD);
+    size_t totalTasks = argc - 1, processedTasks = 0, pendingTasks = totalTasks, taskIndex = 0;
 
-    size_t totalTasks = argc - 1, processedTasks = 0, pendingTasks = totalTasks, taskIndex = 0, workingSlaves = SLAVES_COUNT;
+    char *shmBase;
+    int shmFD;
+    size_t shmIndex = 0;
+
+    initShm(&shmBase, &shmFD, totalTasks * MAX_OUTPUT_LENGTH);
+    sem_t *sem = sem_open(SEM_NAME, O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH, 0);
+
+    if (sem == SEM_FAILED)
+        ERROR_MANAGER("solve > main > sem_open");
+    
+    printf("%ld\n",totalTasks);
+    sleep(2);
+
+    size_t workingSlaves = SLAVES_COUNT;
 
     if (SLAVES_COUNT > totalTasks)
         workingSlaves = totalTasks;
@@ -152,15 +166,16 @@ int main(int argc, char const *argv[]) {
 
                 if (count != 0) {  // read != EOF
                     tasksOutput[count] = 0;
-                    char *output = strtok(tasksOutput, "\t");
 
-                    while (output != NULL) {
-                        printf("%s\n", output);
+                    size_t recievedTasks = 0;
+
+                    for (char *aux = tasksOutput; (aux = strchr(aux, '\t')) != NULL; aux++) {
                         slaves[i].pendingTasks--;
                         processedTasks++;
-                        //fwrite(output, sizeof(char), strlen(output), outputFile);
-                        output = strtok(NULL, "\t");
+                        recievedTasks++;
                     }
+
+                    sendTaskInfo(tasksOutput, recievedTasks, sem, &shmIndex, shmBase);
 
                     //assign, if possible, new task
                     if (slaves[i].pendingTasks <= 0 && pendingTasks > 0)
@@ -172,7 +187,9 @@ int main(int argc, char const *argv[]) {
 
     terminateSlaves(slaves, workingSlaves);
 
-    terminateShm(shmBase,shmFD);
+    terminateShm(shmBase, shmFD,totalTasks * MAX_OUTPUT_LENGTH);
+
+    terminateSem(sem);
 
     return 0;
 }
@@ -268,7 +285,7 @@ static void initSlaves(t_slave slaves[SLAVES_COUNT], char *tasks[], size_t *pend
 }
 
 static void assignTask(t_slave *slave, char const *tasks[], size_t *pendingTasks, size_t *taskIndex) {
-    size_t len = strlen(tasks[*taskIndex]) + 2;
+    size_t len = strlen(tasks[*taskIndex]) + 2;  // for /t and /0
     char tasksStr[len];
 
     if (sprintf(tasksStr, "%s\t", tasks[*taskIndex]) < 0)
@@ -277,37 +294,55 @@ static void assignTask(t_slave *slave, char const *tasks[], size_t *pendingTasks
     if (write(slave->inputFD, tasksStr, len) < 0)
         ERROR_MANAGER("solve > assignTask > write");
 
-    printf("tasks assigned \n");
-
     (*taskIndex)++;
     (*pendingTasks)--;
     (slave->pendingTasks)++;
 }
 
-
-static void initShm(char ** shmBase, int * shmFD) {
-    *shmFD = shm_open(SHR_MEM_NAME, O_CREAT | O_RDWR, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH); //0666 
-    
-    if(*shmFD == -1)
+static void initShm(char **shmBase, int *shmFD, size_t size) {
+    *shmFD = shm_open(SHR_MEM_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);  //0666
+   
+    if (*shmFD == -1)
         ERROR_MANAGER("solve > initShm > shm_open");
 
-    if(ftruncate(*shmFD,MAX_OUTPUT_LENGTH) == -1)
+    if (ftruncate(*shmFD, size) == -1)
         ERROR_MANAGER("solve > initShm > ftruncate");
-    
-    *shmBase = mmap(0,MAX_OUTPUT_LENGTH,PROT_READ|PROT_WRITE, MAP_SHARED, *shmFD,0);
+
+    *shmBase = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, *shmFD, 0);
 
     if (*shmBase == MAP_FAILED)
         ERROR_MANAGER("solve > initShm > mmap");
-
 }
 
-static void terminateShm(char * shmBase, int shmFD) {
-    if(munmap(shmBase, MAX_OUTPUT_LENGTH) == -1)
-        ERROR_MANAGER("solve > terminateShm > munmap");
-        
-    if(close(shmFD) == -1)
+static void terminateShm(char *shmBase, int shmFD, size_t size) {
+    if (close(shmFD) == -1)
         ERROR_MANAGER("solve > terminateShm > close");
 
-    if (shm_unlink(SHR_MEM_NAME) == -1) 
+    if (munmap(shmBase, size) == -1)
+        ERROR_MANAGER("solve > terminateShm > munmap");
+
+    if (shm_unlink(SHR_MEM_NAME) == -1)
         ERROR_MANAGER("solve > terminateShm > shm_unlink");
+}
+
+static void terminateSem(sem_t *sem) {
+    if (sem_close(sem) == -1)
+        ERROR_MANAGER("solve > terminateSem > close");
+
+    if (sem_unlink(SEM_NAME) == -1)
+        ERROR_MANAGER("solve > terminateSem > sem_unlink");
+}
+
+static void sendTaskInfo(char *tasksOutput, size_t recievedTasks, sem_t *sem, size_t *shmIndex, char *shmBase) {
+    size_t tasksOutputSize = strlen(tasksOutput);
+    memcpy(shmBase + *shmIndex, tasksOutput, tasksOutputSize);
+    *shmIndex += tasksOutputSize;
+
+    for (size_t i = 0; i < recievedTasks; i++) {
+        if (sem_post(sem) == -1)
+            ERROR_MANAGER("solve > main > sendTaskInfo");
+        // int aux = -1;
+        // sem_getvalue(sem, &aux);
+        // fprintf(stderr, "%d \n", aux);
+    }
 }
