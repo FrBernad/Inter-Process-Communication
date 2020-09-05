@@ -29,7 +29,9 @@ For example:
  ./solve files/*
 ```
 The **amount of tasks processed** will be returned by the program through **standard output**. This value can be used by the view program to print the processed files. 
+
 There are two ways of doing this:
+
 1. **Pipe solve's output to view**
    
 ```bash
@@ -70,4 +72,4 @@ The tests results can be found in the following files:
  * **Valgrind:** *vista.valgrind*, *solve.valgrind*
  * **Cppcheck:** *cppoutput.txt*
 
-To remove these files,  run `make cleanTest` on the directory where `make test` was run.
+To remove these files, run `make cleanTest` on the directory where `make test` was run.
