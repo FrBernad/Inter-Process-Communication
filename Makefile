@@ -12,6 +12,6 @@ all: $(BINS)
 	$(CC) $(GCCFLAGS) $^ -o $@ $(GCCLIBS)
 
 clean:
-	rm -rf slave solve vista
+	rm -rf slave solve vista output.txt
 
 .PHONY: all clean
