@@ -34,9 +34,9 @@ int main(int argc, char const *argv[])
 
     if(argc-1 == 0){  //stdin
         char totalTasksStr[MAX_TOTAL_FILES+1];
-        size_t bytesRead = 0;
+        ssize_t bytesRead = 0;
 
-        if((bytesRead=read(STDIN_FILENO,totalTasksStr,MAX_TOTAL_FILES))<0)
+        if((bytesRead=read(STDIN_FILENO,totalTasksStr,MAX_TOTAL_FILES))==-1)
             ERROR_MANAGER("vista > main > read total files");
         totalTasksStr[bytesRead]=0;
 
@@ -82,7 +82,8 @@ static void outputTasks(char * shmBase,sem_t * sem, size_t totalTasks){
                   ERROR_MANAGER("vista > outputTasks > sem_wait");
 
             if ((nextTask = strchr(currentTask, '\t')) == NULL)
-                  printf("Incomplete task\n");  //#TODO: Ver q onda
+                  ERROR_MANAGER("vista > outputTasks > strchr"); //#TODO: VER Q ONDA
+
             *nextTask = '\0';
             nextTask++;
 

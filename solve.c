@@ -112,7 +112,7 @@ int main(int argc, char const *argv[]) {
     if (sem == SEM_FAILED)
         ERROR_MANAGER("solve > main > sem_open");
     
-    printf("%ld",totalTasks);
+    printf("%zu",totalTasks);
 
     sleep(2);
 
