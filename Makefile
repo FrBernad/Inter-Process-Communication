@@ -1,5 +1,5 @@
 CC= gcc
-GCCFLAGS= -std=c99 -Wall -pedantic -g -fsanitize=address 
+GCCFLAGS= -std=c99 -Wall -pedantic -g -fsanitize=address
 GCCLIBS= -lrt -pthread
 
 SOURCES= $(wildcard *.c)

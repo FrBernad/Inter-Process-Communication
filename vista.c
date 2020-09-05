@@ -52,46 +52,45 @@ int main(int argc, char const *argv[])
     char *shmBase;
     int shmFD;
 
-    printf("files:%ld\n",totalTasks);
     initShm(&shmBase, &shmFD, totalTasks*MAX_OUTPUT_LENGTH);
 
-    sem_t *sem = sem_open(SEM_NAME, O_CREAT | O_RDWR,  S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH, 0);
+    sem_t *sem = sem_open(SEM_NAME, O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH, 0);
 
     if (sem == SEM_FAILED)
         ERROR_MANAGER("vista > main > sem_open");
     
     outputTasks(shmBase,sem, totalTasks);
     
+    terminateSem(sem);
 
     terminateShm(shmBase, shmFD, totalTasks * MAX_OUTPUT_LENGTH);
-
-    terminateSem(sem);
 
     return 0;
 }
 
 static void outputTasks(char * shmBase,sem_t * sem, size_t totalTasks){
 
-    char * currentTask=shmBase, *nextTask;
+      char *currentTask = shmBase, *nextTask;
 
-    for (size_t i = 0; i < totalTasks; i++) {
-        // int aux = -1;
-        // sem_getvalue(sem,&aux);
-        // printf("%d \n",aux);
-        if (sem_wait(sem) == -1)
-            ERROR_MANAGER("vista > outputTasks > sem_wait");
+      for (size_t i = 0; i < totalTasks; i++) {
 
-        if ((nextTask = strchr(currentTask, '\t')) == NULL)
-            printf("Incomplete task\n");  //#TODO Ver q onda
+            // int aux = -1;
+            // sem_getvalue(sem, &aux);
+            // printf("vista: %d \n", aux);
 
-        *nextTask = '\0';
+            if (sem_wait(sem) == -1)
+                  ERROR_MANAGER("vista > outputTasks > sem_wait");
 
-        nextTask++;
+            if ((nextTask = strchr(currentTask, '\t')) == NULL)
+                  printf("Incomplete task\n");  //#TODO: Ver q onda
+            *nextTask = '\0';
+            nextTask++;
 
-        printf("%s\n", currentTask);
+            printf("%s\n", currentTask);
 
-        currentTask = nextTask;
+            currentTask = nextTask;
     }
+
 }
 
 static void initShm(char **shmBase, int *shmFD, size_t size) {
@@ -100,21 +99,22 @@ static void initShm(char **shmBase, int *shmFD, size_t size) {
     if (*shmFD == -1)
         ERROR_MANAGER("vista > initShm > shm_open");
 
-    *shmBase = mmap(0, size, PROT_READ | PROT_WRITE , MAP_SHARED, *shmFD, 0);
+    *shmBase = mmap(NULL, size, PROT_READ | PROT_WRITE , MAP_SHARED, *shmFD, 0);
 
     if (*shmBase == MAP_FAILED)
         ERROR_MANAGER("vista > initShm > mmap");
 }
 
 static void terminateShm(char *shmBase, int shmFD, size_t size) {
-    if (munmap(shmBase, size) == -1)
-        ERROR_MANAGER("vista > terminateShm > munmap");
-
     if (close(shmFD) == -1)
         ERROR_MANAGER("vista > terminateShm > close");
 
     if (shm_unlink(SHR_MEM_NAME) == -1)
-        ERROR_MANAGER("vista > terminateShm > shm_unlink");
+        if (errno != ENOENT)
+            ERROR_MANAGER("vista > terminateShm > shm_unlink");
+
+    if (munmap(shmBase, size) == -1)
+        ERROR_MANAGER("vista > terminateShm > munmap");
 }
 
 static void terminateSem(sem_t *sem) {
@@ -122,5 +122,6 @@ static void terminateSem(sem_t *sem) {
         ERROR_MANAGER("vista > terminateSem > close");
 
     if (sem_unlink(SEM_NAME) == -1)
-        ERROR_MANAGER("vista > terminateSem > sem_unlink");
+        if (errno != ENOENT)
+            ERROR_MANAGER("vista > terminateSem > sem_unlink");
 }

@@ -31,7 +31,7 @@ fd[0] read
 fd[1] write
 */
 
-// #FIXME fijarse cuando poner < o == -1
+// #FIXME: fijarse cuando poner < o == -1
 
 #define _XOPEN_SOURCE 500  //for ftruncate
 
@@ -97,6 +97,9 @@ int main(int argc, char const *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    if (setvbuf(stdout, NULL, _IONBF, 0) != 0)
+          ERROR_MANAGER("solve > main > setvbuff");
+
     size_t totalTasks = argc - 1, processedTasks = 0, pendingTasks = totalTasks, taskIndex = 0;
 
     char *shmBase;
@@ -104,12 +107,13 @@ int main(int argc, char const *argv[]) {
     size_t shmIndex = 0;
 
     initShm(&shmBase, &shmFD, totalTasks * MAX_OUTPUT_LENGTH);
-    sem_t *sem = sem_open(SEM_NAME, O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH, 0);
+    sem_t *sem = sem_open(SEM_NAME, O_EXCL|O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH, 0);
 
     if (sem == SEM_FAILED)
         ERROR_MANAGER("solve > main > sem_open");
     
-    printf("%ld\n",totalTasks);
+    printf("%ld",totalTasks);
+
     sleep(2);
 
     size_t workingSlaves = SLAVES_COUNT;
@@ -187,28 +191,11 @@ int main(int argc, char const *argv[]) {
 
     terminateSlaves(slaves, workingSlaves);
 
-    terminateShm(shmBase, shmFD,totalTasks * MAX_OUTPUT_LENGTH);
-
     terminateSem(sem);
 
+    terminateShm(shmBase, shmFD,totalTasks * MAX_OUTPUT_LENGTH);
+
     return 0;
-}
-
-static void terminateSlaves(t_slave *slaves, size_t workingSlaves) {
-    for (size_t i = 0; i < workingSlaves; i++) {
-        //closed fds
-        if (close(slaves[i].inputFD) < 0)
-            ERROR_MANAGER("solve > terminateSlaves > closing pipe");
-
-        //closed fds
-        if (close(slaves[i].outputFD) < 0)
-            ERROR_MANAGER("solve > terminateSlaves > closing pipe");
-    }
-
-    for (size_t i = 0; i < workingSlaves; i++) {
-        if (wait(NULL) < 0)
-            ERROR_MANAGER("solve > terminateSlaves > waiting for slave to finish\n");
-    }
 }
 
 static void initSlaves(t_slave slaves[SLAVES_COUNT], char *tasks[], size_t *pendingTasks, size_t *taskIndex, size_t *workingSlaves) {
@@ -221,51 +208,53 @@ static void initSlaves(t_slave slaves[SLAVES_COUNT], char *tasks[], size_t *pend
     char *childArgs[initTasks + 2];
 
     for (size_t i = 0; i < *workingSlaves; i++) {
-        //create master-slave pipe
-        if (pipe(slaveMaster) < 0)
-            ERROR_MANAGER("solve > initSlave > creating slave-master pipe");
 
-        //create pipe
-        if (pipe(masterSlave) < 0)
-            ERROR_MANAGER("solve > initSlave > creating master-slave pipe");
+          slaves[i].pendingTasks = 0;
+          //create master-slave pipe
+          if (pipe(slaveMaster) < 0)
+                ERROR_MANAGER("solve > initSlave > creating slave-master pipe");
 
-        slaves[i].outputFD = slaveMaster[READ];
-        slaves[i].inputFD = masterSlave[WRITE];
+          //create pipe
+          if (pipe(masterSlave) < 0)
+                ERROR_MANAGER("solve > initSlave > creating master-slave pipe");
 
-        //create slave
-        if ((pid = fork()) == 0) {
-            //close uncorresponding fds slaves and dup
+          slaves[i].outputFD = slaveMaster[READ];
+          slaves[i].inputFD = masterSlave[WRITE];
 
-            if (dup2(masterSlave[READ], STDIN_FILENO) < 0)
-                ERROR_MANAGER("solve > initSlave > dupping slave pipe");
+          //create slave
+          if ((pid = fork()) == 0) {
+                //close uncorresponding fds slaves and dup
 
-            if (dup2(slaveMaster[WRITE], STDOUT_FILENO) < 0)
-                ERROR_MANAGER("solve > initSlave > dupping slave pipe");
+                if (dup2(masterSlave[READ], STDIN_FILENO) < 0)
+                      ERROR_MANAGER("solve > initSlave > dupping slave pipe");
 
-            //closed dupped fds
-            if (close(masterSlave[READ]) < 0)
-                ERROR_MANAGER("solve > initSlave > closing slave fd");
+                if (dup2(slaveMaster[WRITE], STDOUT_FILENO) < 0)
+                      ERROR_MANAGER("solve > initSlave > dupping slave pipe");
 
-            if (close(slaveMaster[WRITE]) < 0)
-                ERROR_MANAGER("solve > initSlave > closing slave fd");
+                //closed dupped fds
+                if (close(masterSlave[READ]) < 0)
+                      ERROR_MANAGER("solve > initSlave > closing slave fd");
 
-            //closed unnecessary fds
-            if (close(masterSlave[WRITE]) < 0)
-                ERROR_MANAGER("solve > initSlave > closing slave fd");
+                if (close(slaveMaster[WRITE]) < 0)
+                      ERROR_MANAGER("solve > initSlave > closing slave fd");
 
-            if (close(slaveMaster[READ]) < 0)
-                ERROR_MANAGER("solve > initSlave > closing slave fd");
+                //closed unnecessary fds
+                if (close(masterSlave[WRITE]) < 0)
+                      ERROR_MANAGER("solve > initSlave > closing slave fd");
 
-            size_t j;
-            for (j = 1; j < initTasks + 1; j++)
-                childArgs[j] = tasks[(*taskIndex)++];
+                if (close(slaveMaster[READ]) < 0)
+                      ERROR_MANAGER("solve > initSlave > closing slave fd");
 
-            childArgs[0] = SLAVE_FILENAME;
-            childArgs[j] = NULL;
+                size_t j;
+                for (j = 1; j < initTasks + 1; j++)
+                      childArgs[j] = tasks[(*taskIndex)++];
 
-            //excecute slave
-            if (execv(childArgs[0], childArgs) < 0)
-                ERROR_MANAGER("solve > initSlave > exec slave");
+                childArgs[0] = SLAVE_FILENAME;
+                childArgs[j] = NULL;
+
+                //excecute slave
+                if (execv(childArgs[0], childArgs) < 0)
+                      ERROR_MANAGER("solve > initSlave > exec slave");
 
         } else if (pid == -1)
             ERROR_MANAGER("solve > initSlave > slave fork ");
@@ -284,6 +273,21 @@ static void initSlaves(t_slave slaves[SLAVES_COUNT], char *tasks[], size_t *pend
     }
 }
 
+static void initShm(char **shmBase, int *shmFD, size_t size) {
+    *shmFD = shm_open(SHR_MEM_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);  //0666
+   
+    if (*shmFD == -1)
+        ERROR_MANAGER("solve > initShm > shm_open");
+
+    if (ftruncate(*shmFD, size) == -1)
+        ERROR_MANAGER("solve > initShm > ftruncate");
+
+    *shmBase = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, *shmFD, 0);
+
+    if (*shmBase == MAP_FAILED)
+        ERROR_MANAGER("solve > initShm > mmap");
+}
+
 static void assignTask(t_slave *slave, char const *tasks[], size_t *pendingTasks, size_t *taskIndex) {
     size_t len = strlen(tasks[*taskIndex]) + 2;  // for /t and /0
     char tasksStr[len];
@@ -299,30 +303,28 @@ static void assignTask(t_slave *slave, char const *tasks[], size_t *pendingTasks
     (slave->pendingTasks)++;
 }
 
-static void initShm(char **shmBase, int *shmFD, size_t size) {
-    *shmFD = shm_open(SHR_MEM_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);  //0666
-   
-    if (*shmFD == -1)
-        ERROR_MANAGER("solve > initShm > shm_open");
+static void sendTaskInfo(char *tasksOutput, size_t recievedTasks, sem_t *sem, size_t *shmIndex, char *shmBase) {
+    size_t tasksOutputSize = strlen(tasksOutput);
 
-    if (ftruncate(*shmFD, size) == -1)
-        ERROR_MANAGER("solve > initShm > ftruncate");
+    memcpy(shmBase + *shmIndex, tasksOutput, tasksOutputSize);
+    *shmIndex += tasksOutputSize;
 
-    *shmBase = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, *shmFD, 0);
-
-    if (*shmBase == MAP_FAILED)
-        ERROR_MANAGER("solve > initShm > mmap");
+    for (size_t i = 0; i < recievedTasks; i++) {
+        if (sem_post(sem) == -1)
+            ERROR_MANAGER("solve > main > sendTaskInfo");
+    }
 }
 
 static void terminateShm(char *shmBase, int shmFD, size_t size) {
     if (close(shmFD) == -1)
         ERROR_MANAGER("solve > terminateShm > close");
 
+    if (shm_unlink(SHR_MEM_NAME) == -1)
+        if (errno != ENOENT)
+            ERROR_MANAGER("solve > terminateShm > shm_unlink");
+
     if (munmap(shmBase, size) == -1)
         ERROR_MANAGER("solve > terminateShm > munmap");
-
-    if (shm_unlink(SHR_MEM_NAME) == -1)
-        ERROR_MANAGER("solve > terminateShm > shm_unlink");
 }
 
 static void terminateSem(sem_t *sem) {
@@ -330,19 +332,24 @@ static void terminateSem(sem_t *sem) {
         ERROR_MANAGER("solve > terminateSem > close");
 
     if (sem_unlink(SEM_NAME) == -1)
-        ERROR_MANAGER("solve > terminateSem > sem_unlink");
+        if (errno != ENOENT)
+            ERROR_MANAGER("solve > terminateSem > sem_unlink");
 }
 
-static void sendTaskInfo(char *tasksOutput, size_t recievedTasks, sem_t *sem, size_t *shmIndex, char *shmBase) {
-    size_t tasksOutputSize = strlen(tasksOutput);
-    memcpy(shmBase + *shmIndex, tasksOutput, tasksOutputSize);
-    *shmIndex += tasksOutputSize;
 
-    for (size_t i = 0; i < recievedTasks; i++) {
-        if (sem_post(sem) == -1)
-            ERROR_MANAGER("solve > main > sendTaskInfo");
-        // int aux = -1;
-        // sem_getvalue(sem, &aux);
-        // fprintf(stderr, "%d \n", aux);
+static void terminateSlaves(t_slave *slaves, size_t workingSlaves) {
+    for (size_t i = 0; i < workingSlaves; i++) {
+        //closed fds
+        if (close(slaves[i].inputFD) < 0)
+            ERROR_MANAGER("solve > terminateSlaves > closing pipe");
+
+        //closed fds
+        if (close(slaves[i].outputFD) < 0)
+            ERROR_MANAGER("solve > terminateSlaves > closing pipe");
+    }
+
+    for (size_t i = 0; i < workingSlaves; i++) {
+        if (wait(NULL) < 0)
+            ERROR_MANAGER("solve > terminateSlaves > waiting for slave to finish\n");
     }
 }
