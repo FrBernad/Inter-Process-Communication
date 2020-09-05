@@ -1,21 +1,6 @@
 // This is a personal academic project. Dear PVS-Studio, please check it.
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
-/*
-● DEBE recibir el/los paths de los archivos a procesar y DEBE iniciar el programa
-correspondiente para procesarlos (minisat).
-● DEBE enviar la información relevante del procesamiento (ver proceso vista) al
-proceso aplicación.
-● NO DEBE volcar el resultado de minisat a un archivo en disco, para luego leerlo
-desde el esclavo, DEBERÁ recibir el output de minisat utilizando algún mecanismo
-de IPC más sofisticado.
-● No es necesario escribir un parser del output de minisat, se pueden utilizar
-comandos como grep, sed, awk, etc.
-○ Hint: popen
-○ Hint: grep -o -e "Number of.*[0-9]\+" -e "CPU time.*" -e
-".*SATISFIABLE"
-*/
-
 #define _POSIX_C_SOURCE 2
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -79,7 +64,8 @@ static void processTask(char *tasks) {
 
             printf("PID:%d\nFilename:%s\n%s\t", getpid(), basename(task), output);  //usamos la de GNU porque no modifica el argumento
 
-            pclose(outputStream);
+            if(pclose(outputStream)==-1)
+                  ERROR_MANAGER("slave>processTask>pclose");
 
             task = strtok(NULL, "\t");
       }

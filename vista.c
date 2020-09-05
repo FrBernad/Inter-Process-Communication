@@ -13,7 +13,7 @@
 #include <unistd.h>
 
 #define MAX_OUTPUT_LENGTH 4096
-#define MAX_TOTAL_FILES 4000
+#define MAX_TOTAL_FILES 20
 #define SHR_MEM_NAME "/shm_buffer"
 #define SEM_NAME "/shr_sem"
 
@@ -75,7 +75,7 @@ static void outputTasks(char *shmBase, sem_t *sem, size_t totalTasks) {
                   ERROR_MANAGER("vista > outputTasks > sem_wait");
 
             if ((nextTask = strchr(currentTask, '\t')) == NULL)
-                  ERROR_MANAGER("vista > outputTasks > strchr");  //#TODO: VER Q ONDA
+                  ERROR_MANAGER("vista > outputTasks > strchr");  
 
             *nextTask = '\0';
             nextTask++;
