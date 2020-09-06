@@ -69,7 +69,6 @@ int main(int argc, char const *argv[]) {
 
 static void outputTasks(char *shmBase, sem_t *sem, size_t totalTasks) {
       char *currentTask = shmBase, *nextTask;
-
       for (size_t i = 0; i < totalTasks; i++) {
             if (sem_wait(sem) == -1)
                   ERROR_MANAGER("vista > outputTasks > sem_wait");

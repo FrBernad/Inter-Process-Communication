@@ -47,17 +47,6 @@ static void terminateShm(char *shmBase, int shmFD, size_t size);
 static void sendTaskInfo(char *tasksOutput, size_t recievedTasks, sem_t *sem, size_t *shmIndex, char *shmBase, FILE *output);
 static void terminateSem(sem_t *sem);
 
-/*
-        send parsed data
-    --- R--------------W
-MASTER                   SLAVE
-   |    W--------------R
-   |     send file path
-   | 
-   |      semaforo R/W
-    ---  SHR_MEM BUFFER  --- VISTA
-*/
-
 int main(int argc, char const *argv[]) {
       if (argc <= 1) {
             fprintf(stderr, "Wrong number of parameters, expected at least one valid file path name\n");
@@ -73,7 +62,7 @@ int main(int argc, char const *argv[]) {
       int shmFD;
       size_t shmIndex = 0;
       initShm(&shmBase, &shmFD, totalTasks * MAX_OUTPUT_LENGTH);
-     
+
       sem_t *sem = sem_open(SEM_NAME, O_EXCL | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH, 0);
       if (sem == SEM_FAILED)
             ERROR_MANAGER("solve > main > sem_open");
@@ -84,7 +73,7 @@ int main(int argc, char const *argv[]) {
 
       printf("%zu", totalTasks);
       sleep(2);
-      
+
       size_t workingSlaves = SLAVES_COUNT;
       if (SLAVES_COUNT > totalTasks)
             workingSlaves = totalTasks;
@@ -213,7 +202,6 @@ static void initSlaves(t_slave slaves[SLAVES_COUNT], char *tasks[], size_t *pend
                   childArgs[0] = SLAVE_FILENAME;
                   childArgs[j] = NULL;
 
-                  //excecute slave
                   if (execv(childArgs[0], childArgs) == -1)
                         ERROR_MANAGER("solve > initSlave > exec slave");
 
@@ -250,10 +238,10 @@ static void initShm(char **shmBase, int *shmFD, size_t size) {
 }
 
 static void assignTask(t_slave *slave, char const *tasks[], size_t *pendingTasks, size_t *taskIndex) {
-      size_t len = strlen(tasks[*taskIndex]) + 2;  // for /t and /0
+      size_t len = strlen(tasks[*taskIndex]) + 1;  // for /0
       char tasksStr[len];
 
-      if (sprintf(tasksStr, "%s\t", tasks[*taskIndex]) < 0)
+      if (sprintf(tasksStr, "%s", tasks[*taskIndex]) < 0)
             ERROR_MANAGER("solve > assignTask > sprintf");
 
       if (write(slave->inputFD, tasksStr, len) == -1)
@@ -286,7 +274,7 @@ static void terminateShm(char *shmBase, int shmFD, size_t size) {
 
       if (shm_unlink(SHR_MEM_NAME) == -1)
             if (errno != ENOENT)
-                ERROR_MANAGER("solve > terminateShm > shm_unlink");
+                  ERROR_MANAGER("solve > terminateShm > shm_unlink");
 
       if (munmap(shmBase, size) == -1)
             ERROR_MANAGER("solve > terminateShm > munmap");
@@ -298,22 +286,21 @@ static void terminateSem(sem_t *sem) {
 
       if (sem_unlink(SEM_NAME) == -1)
             if (errno != ENOENT)
-                ERROR_MANAGER("solve > terminateSem > sem_unlink");
+                  ERROR_MANAGER("solve > terminateSem > sem_unlink");
 }
 
 static void terminateSlaves(t_slave *slaves, size_t workingSlaves) {
       for (size_t i = 0; i < workingSlaves; i++) {
-            //closed fds
-            if (close(slaves[i].inputFD) == -1)
-                ERROR_MANAGER("solve > terminateSlaves > closing pipe");
 
-            //closed fds
+            if (close(slaves[i].inputFD) == -1)
+                  ERROR_MANAGER("solve > terminateSlaves > closing pipe");
+
             if (close(slaves[i].outputFD) == -1)
-                ERROR_MANAGER("solve > terminateSlaves > closing pipe");
+                  ERROR_MANAGER("solve > terminateSlaves > closing pipe");
       }
 
       for (size_t i = 0; i < workingSlaves; i++) {
             if (wait(NULL) == -1)
-                ERROR_MANAGER("solve > terminateSlaves > waiting for slave to finish\n");
+                  ERROR_MANAGER("solve > terminateSlaves > waiting for slave to finish\n");
       }
 }
