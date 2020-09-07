@@ -31,20 +31,25 @@ static void outputTasks(char *shmBase, sem_t *sem, size_t totalTasks);
 int main(int argc, char const *argv[]) {
       size_t totalTasks = 0;
 
-      if (argc - 1 == 0) {  //stdin
+      if (argc - 1 == 0) { //info recieved from pipr
             char totalTasksStr[MAX_TOTAL_FILES + 1];
             ssize_t bytesRead = 0;
 
             if ((bytesRead = read(STDIN_FILENO, totalTasksStr, MAX_TOTAL_FILES)) == -1)
                   ERROR_MANAGER("vista > main > read total files");
-            totalTasksStr[bytesRead] = 0;
 
+            totalTasksStr[bytesRead] = 0;
             totalTasks = (size_t)atoi(totalTasksStr);
 
-      } else if (argc - 1 == 1)
+      } else if (argc - 1 == 1) //info recieved as parameter
             totalTasks = atoi(argv[1]);
       else {
             fprintf(stderr, "Wrong number of parameters, expected info from solve or to be piped\n");
+            exit(EXIT_FAILURE);
+      }
+
+      if (totalTasks == 0) {
+            fprintf(stderr, "Error in vista > main > atoi, invalid info\n");
             exit(EXIT_FAILURE);
       }
 
@@ -69,11 +74,12 @@ int main(int argc, char const *argv[]) {
 
 static void outputTasks(char *shmBase, sem_t *sem, size_t totalTasks) {
       char *currentTask = shmBase, *nextTask;
+
       for (size_t i = 0; i < totalTasks; i++) {
             if (sem_wait(sem) == -1)
                   ERROR_MANAGER("vista > outputTasks > sem_wait");
 
-            if ((nextTask = strchr(currentTask, '\t')) == NULL)
+            if ((nextTask = strchr(currentTask, '\t')) == NULL) //look for task end
                   ERROR_MANAGER("vista > outputTasks > strchr");  
 
             *nextTask = '\0';

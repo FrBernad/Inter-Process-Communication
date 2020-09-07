@@ -53,8 +53,11 @@ int main(int argc, char const *argv[]) {
             exit(EXIT_FAILURE);
       }
 
+      // Disable buffering on stdout
       if (setvbuf(stdout, NULL, _IONBF, 0) != 0)
             ERROR_MANAGER("solve > main > setvbuff");
+
+      //init shared resources
 
       size_t totalTasks = argc - 1, processedTasks = 0, pendingTasks = totalTasks, taskIndex = 0;
 
@@ -63,7 +66,7 @@ int main(int argc, char const *argv[]) {
       size_t shmIndex = 0;
       initShm(&shmBase, &shmFD, totalTasks * MAX_OUTPUT_LENGTH);
 
-      sem_t *sem = sem_open(SEM_NAME, O_EXCL | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH, 0);
+      sem_t *sem = sem_open(SEM_NAME, O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH, 0);
       if (sem == SEM_FAILED)
             ERROR_MANAGER("solve > main > sem_open");
 
@@ -71,8 +74,12 @@ int main(int argc, char const *argv[]) {
       if ((output = fopen("output.txt", "w")) == NULL)
             ERROR_MANAGER("solve > main > fopen");
 
+      //end of shared resources init
+
       printf("%zu", totalTasks);
       sleep(2);
+
+      //init slaves
 
       size_t workingSlaves = SLAVES_COUNT;
       if (SLAVES_COUNT > totalTasks)
@@ -82,6 +89,9 @@ int main(int argc, char const *argv[]) {
       char const **tasks = argv + 1;
       initSlaves(slaves, (char **)tasks, &pendingTasks, &taskIndex, &workingSlaves);
 
+      //end of slaves init
+
+      //processing logic
       fd_set readfds;
       while (processedTasks < totalTasks) {
             FD_ZERO(&readfds);
@@ -173,8 +183,8 @@ static void initSlaves(t_slave slaves[SLAVES_COUNT], char *tasks[], size_t *pend
 
             //create slave
             if ((pid = fork()) == 0) {
-                  //close uncorresponding fds slaves and dup
 
+                  //close uncorresponding fds slaves and dup
                   if (dup2(masterSlave[READ], STDIN_FILENO) == -1)
                         ERROR_MANAGER("solve > initSlave > dupping slave pipe");
 
@@ -223,7 +233,7 @@ static void initSlaves(t_slave slaves[SLAVES_COUNT], char *tasks[], size_t *pend
 }
 
 static void initShm(char **shmBase, int *shmFD, size_t size) {
-      *shmFD = shm_open(SHR_MEM_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);  //0666
+      *shmFD = shm_open(SHR_MEM_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);  //equals 0666
 
       if (*shmFD == -1)
             ERROR_MANAGER("solve > initShm > shm_open");
@@ -258,7 +268,8 @@ static void sendTaskInfo(char *tasksOutput, size_t recievedTasks, sem_t *sem, si
       memcpy(shmBase + *shmIndex, tasksOutput, tasksOutputSize);
       *shmIndex += tasksOutputSize;
 
-      tasksOutput[tasksOutputSize - 1] = '\n';
+      tasksOutput[tasksOutputSize - 1] = '\n'; //replace \t with /n to keep consistent output when writing to output.txt
+
       if (fwrite(tasksOutput, sizeof(char), tasksOutputSize, output) == 0)
             ERROR_MANAGER("solve > main > fwrite");
 

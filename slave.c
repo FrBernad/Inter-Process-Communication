@@ -21,16 +21,19 @@
 static void processTask(char *task);
 
 int main(int argc, char const *argv[]) {
+
       // Disable buffering on stdout
       if (setvbuf(stdout, NULL, _IONBF, 0) != 0)
             ERROR_MANAGER("slave > main > setvbuff");
 
+      //process init tasks
       for (size_t i = 1; i < argc; i++)
             processTask((char *)argv[i]);
 
       char task[MAX_TASKS_LENGTH + 1] = {0};
       ssize_t count;
 
+      //process new tasks
       while ((count = read(STDIN_FILENO, task, MAX_TASKS_LENGTH)) != 0) {
             if (count == -1)
                   ERROR_MANAGER("slave > main > read input");
