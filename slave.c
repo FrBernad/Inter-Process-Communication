@@ -62,7 +62,7 @@ static void processTask(char *task) {
 
       output[count] = 0;
 
-      printf("PID:%d\nFilename:%s\n%s\t", getpid(), basename(task), output);  //usamos la de GNU porque no modifica el argumento
+      printf("PID:%d\nFilename:%s\n%s\t", getpid(), basename(task), output);  //GNU doesnt modifiy arguments
 
       if (pclose(outputStream) == -1)
             ERROR_MANAGER("slave>processTask>pclose");
