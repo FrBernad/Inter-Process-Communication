@@ -31,7 +31,7 @@ static void outputTasks(char *shmBase, sem_t *sem, size_t totalTasks);
 int main(int argc, char const *argv[]) {
       size_t totalTasks = 0;
 
-      if (argc - 1 == 0) { //info recieved from pipr
+      if (argc - 1 == 0) { //info recieved from pipe
             char totalTasksStr[MAX_TOTAL_FILES + 1];
             ssize_t bytesRead = 0;
 
